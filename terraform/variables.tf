@@ -16,7 +16,7 @@ variable "cloudflare_zone_id" {
 
 variable "enable_dnssec" {
   type    = bool
-  default = true
+  default = false
 }
 
 variable "origin_verify_header_name" {
@@ -32,7 +32,7 @@ variable "origin_verify_header_value" {
 
 variable "enable_origin_verify_transform" {
   type    = bool
-  default = true
+  default = false
 }
 
 variable "enable_rate_limits" {
