@@ -66,18 +66,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          # Request an OIDC token with the AWS audience
           resp="$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")"
+
+          # Extract the JWT from the JSON response
           token="$(python3 - <<'PY'
 import json,sys
 print(json.loads(sys.stdin.read())["value"])
 PY
 <<< "$resp")"
+
+          # Decode JWT payload and print only safe claim fields
           python3 - <<'PY'
 import base64, json, sys
-t=sys.stdin.read().strip().split(".")[1]
-t += "=" * (-len(t) % 4)
-payload=json.loads(base64.urlsafe_b64decode(t).decode())
+parts = sys.stdin.read().strip().split(".")
+payload_b64 = parts[1]
+payload_b64 += "=" * (-len(payload_b64) % 4)
+payload = json.loads(base64.urlsafe_b64decode(payload_b64).decode())
 print("aud:", payload.get("aud"))
 print("sub:", payload.get("sub"))
 print("job_workflow_ref:", payload.get("job_workflow_ref"))
