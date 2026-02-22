@@ -2,6 +2,10 @@ resource "aws_s3_bucket" "telemetry" {
   count  = var.enable_telemetry_bucket ? 1 : 0
   bucket = local.telemetry_bucket_name
 
+  lifecycle {
+    prevent_destroy = true
+  }
+
   tags = local.tags
 }
 
