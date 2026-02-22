@@ -54,6 +54,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "telemetry" {
     id     = "telemetry-retention"
     status = "Enabled"
 
+    filter {
+      prefix = ""
+    }
+
     expiration {
       days = var.telemetry_retention_days
     }
