@@ -156,13 +156,13 @@ PY
         working-directory: ${{ env.TF_DIR }}
         run: terraform init
 
-      - name: Terraform plan (fresh in apply)
+      - name: Terraform plan (log only)
         working-directory: ${{ env.TF_DIR }}
-        run: terraform plan -out=tfplan
+        run: terraform plan
 
-      - name: Terraform apply (approved, fresh plan)
+      - name: Terraform apply (approved)
         working-directory: ${{ env.TF_DIR }}
-        run: terraform apply -auto-approve tfplan
+        run: terraform apply -auto-approve
 
   telemetry_snapshot:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
