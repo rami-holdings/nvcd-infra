@@ -156,13 +156,11 @@ PY
         working-directory: ${{ env.TF_DIR }}
         run: terraform init
 
-      - name: Download plan artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan
-          path: ${{ env.TF_DIR }}
+      - name: Terraform plan (fresh in apply)
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -out=tfplan
 
-      - name: Terraform apply (approved)
+      - name: Terraform apply (approved, fresh plan)
         working-directory: ${{ env.TF_DIR }}
         run: terraform apply -auto-approve tfplan
 
