@@ -39,8 +39,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "telemetry" {
 
   rule {
     apply_server_side_encryption_by_default {
-      # Uses AWS-managed key for S3 (fastest MVP; no custom CMK needed here)
-      sse_algorithm = "aws:kms"
+      # Fastest MVP: S3-managed encryption
+      sse_algorithm = "AES256"
     }
     bucket_key_enabled = true
   }
