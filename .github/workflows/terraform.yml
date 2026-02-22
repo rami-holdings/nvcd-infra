@@ -5,24 +5,26 @@ on:
     branches: ["main"]
   push:
     branches: ["main"]
+  workflow_dispatch:
+  schedule:
+    # Weekly snapshot for scorecards (Mondays 07:17 UTC)
+    - cron: "17 7 * * 1"
 
-# Global: least privilege
 permissions:
   contents: read
 
 env:
   AWS_REGION: us-west-2
+  TF_DIR: terraform
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "false"
   TF_CLI_ARGS: "-no-color"
-  TF_DIR: "terraform"
 
 jobs:
   pr_checks:
+    if: github.event_name == 'pull_request'
     name: PR Checks (fmt/validate)
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +37,7 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         run: terraform fmt -check -recursive
 
-      - name: Terraform init (offline)
+      - name: Terraform init (no backend)
         working-directory: ${{ env.TF_DIR }}
         run: terraform init -backend=false
 
@@ -43,21 +45,24 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         run: terraform validate
 
-  apply:
-    name: Apply (main)
+  plan_main:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    name: Plan (main)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    environment: prod
-
+    concurrency:
+      group: nvcd-infra-plan-apply
+      cancel-in-progress: false
     permissions:
       id-token: write
       contents: read
-
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TF_VAR_cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      TF_VAR_origin_verify_header_value: ${{ secrets.NV_ORIGIN_VERIFY_SECRET }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::460742884765:role/nvc-github-terraform-deploy
           aws-region: ${{ env.AWS_REGION }}
@@ -71,6 +76,93 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         run: terraform init
 
-      - name: Terraform apply
+      - name: Terraform plan
         working-directory: ${{ env.TF_DIR }}
-        run: terraform apply -auto-approve
+        run: terraform plan -out=tfplan
+
+      - name: Render plan (text)
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform show -no-color tfplan > tfplan.txt
+
+      - name: Upload plan artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: |
+            ${{ env.TF_DIR }}/tfplan
+            ${{ env.TF_DIR }}/tfplan.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  apply_main:
+    if: github.event_name == 'push'
+    name: Apply (prod)
+    runs-on: ubuntu-latest
+    needs: [plan_main]
+    concurrency:
+      group: nvcd-infra-plan-apply
+      cancel-in-progress: false
+    environment: prod
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TF_VAR_cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      TF_VAR_origin_verify_header_value: ${{ secrets.NV_ORIGIN_VERIFY_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::460742884765:role/nvc-github-terraform-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.TF_DIR }}
+
+      - name: Terraform apply (approved)
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -auto-approve tfplan
+
+  telemetry_snapshot:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Telemetry snapshot (Cloudflare → S3)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ZONE_TAG: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      TELEMETRY_BUCKET: ${{ vars.TELEMETRY_BUCKET }}
+      DAYS: "7"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::460742884765:role/nvc-github-terraform-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --no-cache-dir boto3 requests
+
+      - name: Run snapshot
+        run: python scripts/cf_telemetry_snapshot.py

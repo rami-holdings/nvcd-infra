@@ -1,0 +1,20 @@
+flowchart LR
+    subgraph Cloudflare Edge
+        WAF[WAF / Rulesets]
+        RL[Rate Limiting]
+        HDR[Origin Verify Header]
+    end
+
+    subgraph Vercel
+        MW[Middleware: verify X-NV-Origin-Verify]
+    end
+
+    subgraph AWS
+        S3[Telemetry S3 Bucket]
+        TF[Terraform Backend (state/locks/KMS)]
+    end
+
+    User --> WAF --> RL --> HDR --> MW --> App[Application]
+    HDR -. inject header .-> MW
+    CloudflareAPI[Cloudflare GraphQL API] -->|Weekly snapshots| S3
+    GHA[GitHub Actions OIDC] -->|Plan/Apply| TF
