@@ -73,23 +73,23 @@ jobs:
 
           # Extract the JWT from the JSON response
           token="$(python3 - <<'PY'
-import json,sys
-print(json.loads(sys.stdin.read())["value"])
+            import json,sys
+            print(json.loads(sys.stdin.read())["value"])
 PY
-<<< "$resp")"
+            <<< "$resp")"
 
           # Decode JWT payload and print only safe claim fields
           python3 - <<'PY'
-import base64, json, sys
-parts = sys.stdin.read().strip().split(".")
-payload_b64 = parts[1]
-payload_b64 += "=" * (-len(payload_b64) % 4)
-payload = json.loads(base64.urlsafe_b64decode(payload_b64).decode())
-print("aud:", payload.get("aud"))
-print("sub:", payload.get("sub"))
-print("job_workflow_ref:", payload.get("job_workflow_ref"))
+            import base64, json, sys
+            parts = sys.stdin.read().strip().split(".")
+            payload_b64 = parts[1]
+            payload_b64 += "=" * (-len(payload_b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64).decode())
+            print("aud:", payload.get("aud"))
+            print("sub:", payload.get("sub"))
+            print("job_workflow_ref:", payload.get("job_workflow_ref"))
 PY
-<<< "$token"
+            <<< "$token"
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
